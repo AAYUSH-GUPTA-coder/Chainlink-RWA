@@ -26,11 +26,13 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
     // Custom error type
     error UnexpectedRequestID(bytes32 requestId);
 
+    /// enum to track, either we want to mint to Mint TSLA token against TSLA STOCK and redeem TSLA STOCK against TSLA token
     enum MintOrRedeem {
-        mint,
-        redeem
+        mint, // Mint TSLA token against TSLA STOCK
+        redeem // Redeem TSLA STOCK against TSLA token
     }
 
+    /// Struct to store Mint or Reddem Request details
     struct dTslaRequest {
         uint256 amountOfToken;
         address requester;
@@ -52,8 +54,10 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
     uint64 s_secretVersion;
     uint8 s_secretSlot;
 
+    /// mapping to keep track of request ID (ID given by Chainlink function client when we initiate a request) and request ID Details
     mapping(bytes32 requestId => dTslaRequest request)
         private s_requestIdToRequest;
+
     mapping(address user => uint256 amountAvailableForWithdrawal)
         private s_userToWithdrawalAmount;
 
@@ -214,6 +218,7 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
      * @notice Callback function for fulfilling a request
      * @param requestId The ID of the request to fulfill
      * @param response The HTTP response data
+     * @dev why internal override, because Chainlink Node will call handleOracleFulfillment() in FunctionsClient.sol contract that is calling fulfillRequest() in the same contract. We are overriding that fulfillRequest()
      */
     function fulfillRequest(
         bytes32 requestId,
@@ -248,9 +253,9 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         _unpause();
     }
 
-    /*//////////////////////////////////////////////////////////////
-                                INTERNAL
-    //////////////////////////////////////////////////////////////*/
+    /*//////////////////////////////////////////////////////////////*/
+    /*                            INTERNAL                          */
+    /*//////////////////////////////////////////////////////////////*/
     function _mintFulFillRequest(
         bytes32 requestId,
         bytes memory response
