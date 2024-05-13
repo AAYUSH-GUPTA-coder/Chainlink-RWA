@@ -256,6 +256,9 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
     /*//////////////////////////////////////////////////////////////*/
     /*                            INTERNAL                          */
     /*//////////////////////////////////////////////////////////////*/
+
+    /// Return the amount of TSLA value ( in USD ) is stored in our brokerage
+    /// if we have enough TSLA token, mint the dTSLA
     function _mintFulFillRequest(
         bytes32 requestId,
         bytes memory response
@@ -264,6 +267,9 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
             .amountOfToken;
         s_portfolioBalance = uint256(bytes32(response));
 
+        // if TSLA Collateral > dTSLA to mint -> mint dTSLA
+        // how much TSLA in $$$ do we have ?
+        // how much TSLA in $$$ are we minting ?
         if (
             _getCollateralRatioAdjustedTotalBalance(amountOfTokensToMint) >
             s_portfolioBalance
@@ -318,6 +324,7 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         ] += usdcAmount;
     }
 
+    ///
     function _getCollateralRatioAdjustedTotalBalance(
         uint256 amountOfTokensToMint
     ) internal view returns (uint256) {
@@ -328,9 +335,9 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
             (calculatedNewTotalValue * COLLATERAL_RATIO) / COLLATERAL_PRECISION;
     }
 
-    /*//////////////////////////////////////////////////////////////
-                             VIEW AND PURE
-    //////////////////////////////////////////////////////////////*/
+    /*//////////////////////////////////////////////////////////////*/
+    /*                         VIEW AND PURE                        */
+    /*//////////////////////////////////////////////////////////// */
     function getPortfolioBalance() public view returns (uint256) {
         return s_portfolioBalance;
     }
@@ -371,6 +378,8 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         return (totalSupply() * getTslaPrice()) / PRECISION;
     }
 
+    /// The new expected total value in USD of all the dTSLA tokens combined
+    /// @param addedNumberOfTsla amount of TSLA token minted
     function getCalculatedNewTotalValue(
         uint256 addedNumberOfTsla
     ) public view returns (uint256) {
