@@ -12,7 +12,6 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 /**
  * @title dTSLA
  * @notice This is our contract to make requests to the Alpaca API to mint TSLA-backed dTSLA tokens
- * @dev This contract is meant to be for educational purposes only
  */
 contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
     using FunctionsRequest for FunctionsRequest.Request;
@@ -30,6 +29,7 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
     enum MintOrRedeem {
         mint, // Mint TSLA token against TSLA STOCK
         redeem // Redeem TSLA STOCK against TSLA token
+
     }
 
     /// Struct to store Mint or Reddem Request details
@@ -55,11 +55,9 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
     uint8 s_secretSlot;
 
     /// mapping to keep track of request ID (ID given by Chainlink function client when we initiate a request) and request ID Details
-    mapping(bytes32 requestId => dTslaRequest request)
-        private s_requestIdToRequest;
+    mapping(bytes32 requestId => dTslaRequest request) private s_requestIdToRequest;
 
-    mapping(address user => uint256 amountAvailableForWithdrawal)
-        private s_userToWithdrawalAmount;
+    mapping(address user => uint256 amountAvailableForWithdrawal) private s_userToWithdrawalAmount;
 
     address public i_tslaUsdFeed;
     address public i_usdcUsdFeed;
@@ -82,12 +80,7 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
-    event Response(
-        bytes32 indexed requestId,
-        uint256 character,
-        bytes response,
-        bytes err
-    );
+    event Response(bytes32 indexed requestId, uint256 character, bytes response, bytes err);
 
     /*//////////////////////////////////////////////////////////////
                                FUNCTIONS
@@ -106,11 +99,7 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         address redemptionCoin,
         uint64 secretVersion,
         uint8 secretSlot
-    )
-        FunctionsClient(functionsRouter)
-        ConfirmedOwner(msg.sender)
-        ERC20("Backed TSLA", "bTSLA")
-    {
+    ) FunctionsClient(functionsRouter) ConfirmedOwner(msg.sender) ERC20("Backed TSLA", "bTSLA") {
         s_mintSource = mintSource;
         s_redeemSource = redeemSource;
         s_functionsRouter = functionsRouter;
@@ -138,18 +127,24 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
     }
 
     /**
+     * Send an HTTP request to:
+     * 1. See how much TSLA is brought
+     * 2. If enough TSLA is in alpaca account
+     * 3. mint dTSLA
+     * 2 transcation function, Request and Receive.
+     * we are going to send the MINT request or chainlink oracle going to check our bank account and to see if there is enough tesla is there and in the second transcation it's going to call back to our contract and say Yes or NO you have / haven't enough tesla to mint dTSLA token.
      * @notice Sends an HTTP request for character information
      * @dev If you pass 0, that will act just as a way to get an updated portfolio balance
      * @return requestId The ID of the request
      */
-    function sendMintRequest(
-        uint256 amountOfTokensToMint
-    ) external onlyOwner whenNotPaused returns (bytes32 requestId) {
+    function sendMintRequest(uint256 amountOfTokensToMint)
+        external
+        onlyOwner
+        whenNotPaused
+        returns (bytes32 requestId)
+    {
         // they want to mint $100 and the portfolio has $200 - then that's cool
-        if (
-            _getCollateralRatioAdjustedTotalBalance(amountOfTokensToMint) >
-            s_portfolioBalance
-        ) {
+        if (_getCollateralRatioAdjustedTotalBalance(amountOfTokensToMint) > s_portfolioBalance) {
             revert dTSLA__NotEnoughCollateral();
         }
         FunctionsRequest.Request memory req;
@@ -158,16 +153,17 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
 
         // Send the request and store the request ID
         requestId = _sendRequest(req.encodeCBOR(), i_subId, GAS_LIMIT, s_donID);
-        s_requestIdToRequest[requestId] = dTslaRequest(
-            amountOfTokensToMint,
-            msg.sender,
-            MintOrRedeem.mint
-        );
+        s_requestIdToRequest[requestId] = dTslaRequest(amountOfTokensToMint, msg.sender, MintOrRedeem.mint);
         return requestId;
     }
 
-    /*
-     * @notice user sends a Chainlink Functions request to sell TSLA for redemptionCoin
+    /** 
+     * @notice user sends a Chainlink Functions request to sell TSLA for redemptionCoin (USDC)
+     * @notice This will, have the chainlink function call our alpaca (bank)
+     * and do the following
+     * 1. Sell TSLA on the brokerage
+     * 2. Buy USDC on the brokerage
+     * 3. Send USDC to this contract for the user to withdraw
      * @notice this will put the redemptionCoin in a withdrawl queue that the user must call to redeem
      *
      * @dev Burn dTSLA
@@ -177,16 +173,12 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
      *
      * @param amountdTsla - the amount of dTSLA to redeem
      */
-    function sendRedeemRequest(
-        uint256 amountdTsla
-    ) external whenNotPaused returns (bytes32 requestId) {
+    function sendRedeemRequest(uint256 amountdTsla) external whenNotPaused returns (bytes32 requestId) {
         // Should be able to just always redeem?
         // @audit potential exploit here, where if a user can redeem more than the collateral amount
         // Checks
         // Remember, this has 18 decimals
-        uint256 amountTslaInUsdc = getUsdcValueOfUsd(
-            getUsdValueOfTsla(amountdTsla)
-        );
+        uint256 amountTslaInUsdc = getUsdcValueOfUsd(getUsdValueOfTsla(amountdTsla));
         if (amountTslaInUsdc < MINIMUM_REDEMPTION_COIN_REDEMPTION_AMOUNT) {
             revert dTSLA__BelowMinimumRedemption();
         }
@@ -204,11 +196,7 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         // Send the request and store the request ID
         // We are assuming requestId is unique
         requestId = _sendRequest(req.encodeCBOR(), i_subId, GAS_LIMIT, s_donID);
-        s_requestIdToRequest[requestId] = dTslaRequest(
-            amountdTsla,
-            msg.sender,
-            MintOrRedeem.redeem
-        );
+        s_requestIdToRequest[requestId] = dTslaRequest(amountdTsla, msg.sender, MintOrRedeem.redeem);
 
         // External Interactions
         _burn(msg.sender, amountdTsla);
@@ -220,11 +208,11 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
      * @param response The HTTP response data
      * @dev why internal override, because Chainlink Node will call handleOracleFulfillment() in FunctionsClient.sol contract that is calling fulfillRequest() in the same contract. We are overriding that fulfillRequest()
      */
-    function fulfillRequest(
-        bytes32 requestId,
-        bytes memory response,
-        bytes memory /* err */
-    ) internal override whenNotPaused {
+    function fulfillRequest(bytes32 requestId, bytes memory response, bytes memory /* err */ )
+        internal
+        override
+        whenNotPaused
+    {
         if (s_requestIdToRequest[requestId].mintOrRedeem == MintOrRedeem.mint) {
             _mintFulFillRequest(requestId, response);
         } else {
@@ -236,10 +224,7 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         uint256 amountToWithdraw = s_userToWithdrawalAmount[msg.sender];
         s_userToWithdrawalAmount[msg.sender] = 0;
         // Send the user their USDC
-        bool succ = ERC20(i_redemptionCoin).transfer(
-            msg.sender,
-            amountToWithdraw
-        );
+        bool succ = ERC20(i_redemptionCoin).transfer(msg.sender, amountToWithdraw);
         if (!succ) {
             revert dTSLA__RedemptionFailed();
         }
@@ -259,29 +244,19 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
 
     /// Return the amount of TSLA value ( in USD ) is stored in our brokerage
     /// if we have enough TSLA token, mint the dTSLA
-    function _mintFulFillRequest(
-        bytes32 requestId,
-        bytes memory response
-    ) internal {
-        uint256 amountOfTokensToMint = s_requestIdToRequest[requestId]
-            .amountOfToken;
+    function _mintFulFillRequest(bytes32 requestId, bytes memory response) internal {
+        uint256 amountOfTokensToMint = s_requestIdToRequest[requestId].amountOfToken;
         s_portfolioBalance = uint256(bytes32(response));
 
         // if TSLA Collateral > dTSLA to mint -> mint dTSLA
         // how much TSLA in $$$ do we have ?
         // how much TSLA in $$$ are we minting ?
-        if (
-            _getCollateralRatioAdjustedTotalBalance(amountOfTokensToMint) >
-            s_portfolioBalance
-        ) {
+        if (_getCollateralRatioAdjustedTotalBalance(amountOfTokensToMint) > s_portfolioBalance) {
             revert dTSLA__NotEnoughCollateral();
         }
 
         if (amountOfTokensToMint != 0) {
-            _mint(
-                s_requestIdToRequest[requestId].requester,
-                amountOfTokensToMint
-            );
+            _mint(s_requestIdToRequest[requestId].requester, amountOfTokensToMint);
         }
         // Do we need to return anything?
     }
@@ -294,45 +269,29 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
      * @param requestId - the requestId that was fulfilled
      * @param response - the response from the request, it'll be the amount of USDC that was sent
      */
-    function _redeemFulFillRequest(
-        bytes32 requestId,
-        bytes memory response
-    ) internal {
+    function _redeemFulFillRequest(bytes32 requestId, bytes memory response) internal {
         // This is going to have redemptioncoindecimals decimals
         uint256 usdcAmount = uint256(bytes32(response));
         uint256 usdcAmountWad;
         if (i_redemptionCoinDecimals < 18) {
-            usdcAmountWad =
-                usdcAmount *
-                (10 ** (18 - i_redemptionCoinDecimals));
+            usdcAmountWad = usdcAmount * (10 ** (18 - i_redemptionCoinDecimals));
         }
         if (usdcAmount == 0) {
             // revert dTSLA__RedemptionFailed();
             // Redemption failed, we need to give them a refund of dTSLA
             // This is a potential exploit, look at this line carefully!!
-            uint256 amountOfdTSLABurned = s_requestIdToRequest[requestId]
-                .amountOfToken;
-            _mint(
-                s_requestIdToRequest[requestId].requester,
-                amountOfdTSLABurned
-            );
+            uint256 amountOfdTSLABurned = s_requestIdToRequest[requestId].amountOfToken;
+            _mint(s_requestIdToRequest[requestId].requester, amountOfdTSLABurned);
             return;
         }
 
-        s_userToWithdrawalAmount[
-            s_requestIdToRequest[requestId].requester
-        ] += usdcAmount;
+        s_userToWithdrawalAmount[s_requestIdToRequest[requestId].requester] += usdcAmount;
     }
 
     ///
-    function _getCollateralRatioAdjustedTotalBalance(
-        uint256 amountOfTokensToMint
-    ) internal view returns (uint256) {
-        uint256 calculatedNewTotalValue = getCalculatedNewTotalValue(
-            amountOfTokensToMint
-        );
-        return
-            (calculatedNewTotalValue * COLLATERAL_RATIO) / COLLATERAL_PRECISION;
+    function _getCollateralRatioAdjustedTotalBalance(uint256 amountOfTokensToMint) internal view returns (uint256) {
+        uint256 calculatedNewTotalValue = getCalculatedNewTotalValue(amountOfTokensToMint);
+        return (calculatedNewTotalValue * COLLATERAL_RATIO) / COLLATERAL_PRECISION;
     }
 
     /*//////////////////////////////////////////////////////////////*/
@@ -345,19 +304,17 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
     // TSLA USD has 8 decimal places, so we add an additional 10 decimal places
     function getTslaPrice() public view returns (uint256) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(i_tslaUsdFeed);
-        (, int256 price, , , ) = priceFeed.staleCheckLatestRoundData();
+        (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
         return uint256(price) * ADDITIONAL_FEED_PRECISION;
     }
 
     function getUsdcPrice() public view returns (uint256) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(i_usdcUsdFeed);
-        (, int256 price, , , ) = priceFeed.staleCheckLatestRoundData();
+        (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
         return uint256(price) * ADDITIONAL_FEED_PRECISION;
     }
 
-    function getUsdValueOfTsla(
-        uint256 tslaAmount
-    ) public view returns (uint256) {
+    function getUsdValueOfTsla(uint256 tslaAmount) public view returns (uint256) {
         return (tslaAmount * getTslaPrice()) / PRECISION;
     }
 
@@ -368,9 +325,7 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
      * @param usdAmount - the amount of USD to convert to USDC in WAD
      * @return the amount of redemptionCoin with 18 decimals (WAD)
      */
-    function getUsdcValueOfUsd(
-        uint256 usdAmount
-    ) public view returns (uint256) {
+    function getUsdcValueOfUsd(uint256 usdAmount) public view returns (uint256) {
         return (usdAmount * getUsdcPrice()) / PRECISION;
     }
 
@@ -380,16 +335,11 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
 
     /// The new expected total value in USD of all the dTSLA tokens combined
     /// @param addedNumberOfTsla amount of TSLA token minted
-    function getCalculatedNewTotalValue(
-        uint256 addedNumberOfTsla
-    ) public view returns (uint256) {
-        return
-            ((totalSupply() + addedNumberOfTsla) * getTslaPrice()) / PRECISION;
+    function getCalculatedNewTotalValue(uint256 addedNumberOfTsla) public view returns (uint256) {
+        return ((totalSupply() + addedNumberOfTsla) * getTslaPrice()) / PRECISION;
     }
 
-    function getRequest(
-        bytes32 requestId
-    ) public view returns (dTslaRequest memory) {
+    function getRequest(bytes32 requestId) public view returns (dTslaRequest memory) {
         return s_requestIdToRequest[requestId];
     }
 
