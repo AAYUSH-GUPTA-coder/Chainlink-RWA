@@ -34,11 +34,15 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
 
     /// Struct to store Mint or Reddem Request details
     struct dTslaRequest {
-        uint256 amountOfToken;
-        address requester;
-        MintOrRedeem mintOrRedeem;
+        uint256 amountOfToken; // amount of token to be minted or redeemed
+        address requester; // address of the user who initiated the request
+        MintOrRedeem mintOrRedeem; // whether to mint or redeem
     }
 
+    address constant SEPOLIA_FUNCTIONS_ROUTER = 0xb83E47C2bC239B3bf370bc41e1459A34b41238D0;
+    bytes32 constant SEPOLIA_DON_ID = hex"66756e2d657468657265756d2d7365706f6c69612d3100000000000000000000";
+    address constant SEPOLIA_TSLA_PRICE_FEED = 0xc59E3633BAAC79493d908e63626716e204A45EdF; // This is actually LINK/USD for demo purposes
+    address constant SEPOLIA_USDC_PRICE_FEED = 0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E; // This is USDC/USD Price feed
     uint32 private GAS_LIMIT = 300_000;
     uint64 immutable i_subId;
 
@@ -99,7 +103,7 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         address redemptionCoin,
         uint64 secretVersion,
         uint8 secretSlot
-    ) FunctionsClient(functionsRouter) ConfirmedOwner(msg.sender) ERC20("Backed TSLA", "bTSLA") {
+    ) FunctionsClient(functionsRouter) ConfirmedOwner(msg.sender) ERC20("dTSLA", "dTSLA") {
         s_mintSource = mintSource;
         s_redeemSource = redeemSource;
         s_functionsRouter = functionsRouter;
@@ -157,20 +161,15 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         return requestId;
     }
 
-    /** 
+    /**
      * @notice user sends a Chainlink Functions request to sell TSLA for redemptionCoin (USDC)
      * @notice This will, have the chainlink function call our alpaca (bank)
      * and do the following
-     * 1. Sell TSLA on the brokerage
-     * 2. Buy USDC on the brokerage
-     * 3. Send USDC to this contract for the user to withdraw
+     * 1. Burn dTSLA
+     * 2. Sell TSLA on the brokerage
+     * 3. Buy USDC on the brokerage
+     * 4. Send USDC to this contract for the user to withdraw
      * @notice this will put the redemptionCoin in a withdrawl queue that the user must call to redeem
-     *
-     * @dev Burn dTSLA
-     * @dev Sell TSLA on brokerage
-     * @dev Buy USDC on brokerage
-     * @dev Send USDC to this contract for user to withdraw
-     *
      * @param amountdTsla - the amount of dTSLA to redeem
      */
     function sendRedeemRequest(uint256 amountdTsla) external whenNotPaused returns (bytes32 requestId) {
@@ -308,22 +307,27 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         return uint256(price) * ADDITIONAL_FEED_PRECISION;
     }
 
+    /**
+     * @dev function to get the value of USDC in USD. Note: Price of USDC also fluctuate with time
+     */
     function getUsdcPrice() public view returns (uint256) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(i_usdcUsdFeed);
         (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
         return uint256(price) * ADDITIONAL_FEED_PRECISION;
     }
 
+    /**
+     * @dev function to get the value of TSLA Share in USD
+     * @param tslaAmount - the amount of TSLA to convert to USD in WAD
+     */
     function getUsdValueOfTsla(uint256 tslaAmount) public view returns (uint256) {
         return (tslaAmount * getTslaPrice()) / PRECISION;
     }
 
-    /*
-     * Pass the USD amount with 18 decimals (WAD)
-     * Return the redemptionCoin amount with 18 decimals (WAD)
-     *
-     * @param usdAmount - the amount of USD to convert to USDC in WAD
-     * @return the amount of redemptionCoin with 18 decimals (WAD)
+    /**
+     * @dev function to get the value of USD in terms of USDC. Note: Price of USDC also fluctuate with time
+     * @param usdAmount - Pass the USD amount with 18 decimals
+     * @return the amount of USDC (redemptionCoin) with 18 decimals (WAD)
      */
     function getUsdcValueOfUsd(uint256 usdAmount) public view returns (uint256) {
         return (usdAmount * getUsdcPrice()) / PRECISION;
