@@ -1,25 +1,25 @@
 // This is gonna simulate, what going to happen in chainlink Nodes / DON
 
+const requestConfig = require("../configs/alpacaMintConfig.js");
 const {
   simulateScript,
   decodeResult,
 } = require("@chainlink/functions-toolkit");
-const requestConfig = require("../configs/alpacaMintConfig");
 
 async function main() {
-  const { responseBytesHexstring, errorString } = await simulateScript(
-    requestConfig
-  );
+  const { responseBytesHexstring, errorString, capturedTerminalOutput } =
+    await simulateScript(requestConfig);
+  console.log(`${capturedTerminalOutput}\n`);
   if (responseBytesHexstring) {
     console.log(
-      `Response returned by script: ${decodeResult(
+      `Response returned by script during local simulation: ${decodeResult(
         responseBytesHexstring,
-        requestConfig.expecetedReturnType
+        requestConfig.expectedReturnType
       ).toString()}\n`
     );
   }
   if (errorString) {
-    console.log(`Error returned by script: ${errorString}\n`);
+    console.log(`Error returned by simulated script:\n${errorString}\n`);
   }
 }
 
