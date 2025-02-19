@@ -22,14 +22,15 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
     error dTSLA__BelowMinimumRedemption();
     error dTSLA__RedemptionFailed();
 
-    // Custom error type
+    /*//////////////////////////////////////////////////////////////
+                                 ERRORS
+    //////////////////////////////////////////////////////////////*/
     error UnexpectedRequestID(bytes32 requestId);
 
-    /// enum to track, either we want to mint to Mint TSLA token against TSLA STOCK and redeem TSLA STOCK against TSLA token
+    /// enum to track, either we want to mint to Mint dTSLA token against TSLA STOCK and redeem TSLA Stock against dTSLA token
     enum MintOrRedeem {
-        mint, // Mint TSLA token against TSLA STOCK
-        redeem // Redeem TSLA STOCK against TSLA token
-
+        mint,
+        redeem
     }
 
     /// Struct to store Mint or Reddem Request details
@@ -39,12 +40,15 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         MintOrRedeem mintOrRedeem; // whether to mint or redeem
     }
 
-    address constant SEPOLIA_FUNCTIONS_ROUTER = 0xb83E47C2bC239B3bf370bc41e1459A34b41238D0;
-    bytes32 constant SEPOLIA_DON_ID = hex"66756e2d657468657265756d2d7365706f6c69612d3100000000000000000000";
-    address constant SEPOLIA_TSLA_PRICE_FEED = 0xc59E3633BAAC79493d908e63626716e204A45EdF; // This is actually LINK/USD for demo purposes
-    address constant SEPOLIA_USDC_PRICE_FEED = 0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E; // This is USDC/USD Price feed
-    uint32 private GAS_LIMIT = 300_000;
+    /*//////////////////////////////////////////////////////////////
+                                CONTANTS
+    //////////////////////////////////////////////////////////////*/
+    uint32 private constant GAS_LIMIT = 300_000;
     uint64 immutable i_subId;
+
+    /*//////////////////////////////////////////////////////////////
+                           STORAGE VARIABLES
+    //////////////////////////////////////////////////////////////*/
 
     // Check to get the router address for your supported network
     // https://docs.chain.link/chainlink-functions/supported-networks
@@ -58,9 +62,10 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
     uint64 s_secretVersion;
     uint8 s_secretSlot;
 
-    /// mapping to keep track of request ID (ID given by Chainlink function client when we initiate a request) and request ID Details
+    /// @dev mapping to keep track of request ID (ID given by Chainlink function client when we initiate a request) and request ID Details
     mapping(bytes32 requestId => dTslaRequest request) private s_requestIdToRequest;
 
+    /// @dev Mapping to keep track of user and their withdrawal amount
     mapping(address user => uint256 amountAvailableForWithdrawal) private s_userToWithdrawalAmount;
 
     address public i_tslaUsdFeed;
@@ -94,9 +99,9 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
      */
     constructor(
         uint64 subId, // chainlink function subscription ID
-        string memory mintSource, // Raw javascript code for API
+        string memory mintSource, // // Raw javascript code for API
         string memory redeemSource,
-        address functionsRouter,
+        address functionsRouter, // address of functionsRouter
         bytes32 donId, // chainlink function DON ID
         address tslaPriceFeed,
         address usdcPriceFeed,
@@ -126,19 +131,15 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         s_secretSlot = secretSlot;
     }
 
-    function updateGasFees(uint32 _newGasLimit) external onlyOwner {
-        GAS_LIMIT = _newGasLimit;
-    }
-
     /**
-     * Send an HTTP request to:
+     * @notice Send an HTTP / Chainlink Functions request to:
      * 1. See how much TSLA is brought
      * 2. If enough TSLA is in alpaca account
      * 3. mint dTSLA
      * 2 transcation function, Request and Receive.
      * we are going to send the MINT request or chainlink oracle going to check our bank account and to see if there is enough tesla is there and in the second transcation it's going to call back to our contract and say Yes or NO you have / haven't enough tesla to mint dTSLA token.
-     * @notice Sends an HTTP request for character information
      * @dev If you pass 0, that will act just as a way to get an updated portfolio balance
+     * @param amountOfTokensToMint The amount of tokens to mint
      * @return requestId The ID of the request
      */
     function sendMintRequest(uint256 amountOfTokensToMint)
@@ -237,9 +238,9 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         _unpause();
     }
 
-    /*//////////////////////////////////////////////////////////////*/
-    /*                            INTERNAL                          */
-    /*//////////////////////////////////////////////////////////////*/
+    /*//////////////////////////////////////////////////////////////
+                                INTERNAL
+    //////////////////////////////////////////////////////////////*/
 
     /// Return the amount of TSLA value ( in USD ) is stored in our brokerage
     /// if we have enough TSLA token, mint the dTSLA
@@ -247,9 +248,6 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         uint256 amountOfTokensToMint = s_requestIdToRequest[requestId].amountOfToken;
         s_portfolioBalance = uint256(bytes32(response));
 
-        // if TSLA Collateral > dTSLA to mint -> mint dTSLA
-        // how much TSLA in $$$ do we have ?
-        // how much TSLA in $$$ are we minting ?
         if (_getCollateralRatioAdjustedTotalBalance(amountOfTokensToMint) > s_portfolioBalance) {
             revert dTSLA__NotEnoughCollateral();
         }
@@ -260,7 +258,7 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         // Do we need to return anything?
     }
 
-    /*
+    /**
      * @notice the callback for the redeem request
      * At this point, USDC should be in this contract, and we need to update the user
      * That they can now withdraw their USDC
@@ -287,15 +285,14 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
         s_userToWithdrawalAmount[s_requestIdToRequest[requestId].requester] += usdcAmount;
     }
 
-    ///
     function _getCollateralRatioAdjustedTotalBalance(uint256 amountOfTokensToMint) internal view returns (uint256) {
         uint256 calculatedNewTotalValue = getCalculatedNewTotalValue(amountOfTokensToMint);
         return (calculatedNewTotalValue * COLLATERAL_RATIO) / COLLATERAL_PRECISION;
     }
 
-    /*//////////////////////////////////////////////////////////////*/
-    /*                         VIEW AND PURE                        */
-    /*//////////////////////////////////////////////////////////// */
+    /*//////////////////////////////////////////////////////////////
+                             VIEW AND PURE
+    //////////////////////////////////////////////////////////////*/
     function getPortfolioBalance() public view returns (uint256) {
         return s_portfolioBalance;
     }
@@ -330,7 +327,7 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
      * @return the amount of USDC (redemptionCoin) with 18 decimals (WAD)
      */
     function getUsdcValueOfUsd(uint256 usdAmount) public view returns (uint256) {
-        return (usdAmount * getUsdcPrice()) / PRECISION;
+        return (usdAmount * PRECISION) / getUsdcPrice();
     }
 
     function getTotalUsdValue() public view returns (uint256) {
@@ -349,9 +346,5 @@ contract dTSLA is FunctionsClient, ConfirmedOwner, ERC20, Pausable {
 
     function getWithdrawalAmount(address user) public view returns (uint256) {
         return s_userToWithdrawalAmount[user];
-    }
-
-    function getGasLimit() external view returns (uint32) {
-        return GAS_LIMIT;
     }
 }
