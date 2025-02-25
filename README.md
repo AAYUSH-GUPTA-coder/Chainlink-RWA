@@ -1,5 +1,15 @@
-1. Only the owner can mint dTSLA
-2. Anyone can redeem dTSLA for USDC or "the stablecoin" of choice
-3. Chainlink functions will kick off a TSLA sell for USDC, and then send it to the contract
-4. The user will have to then call finishRedeem to get their USDC
+# 🚀 Chainlink-RWA: Tokenize $TSLA Stocks On-Chain
+Chainlink-RWA enables users to mint $TSLA tokens backed by their TSLA stock holdings on (Alpaca account)[https://app.alpaca.markets/]. Users can securely store and trade $TSLA tokens, bringing real-world stock ownership on-chain.
 
+# 🔗 How It Works
+## Balance Verification:
+Leveraging Chainlink Functions, the TSLA stock balance is fetched from the user’s Alpaca account. This verified balance is used to mint an equivalent amount of $TSLA tokens.
+
+## Real-Time Pricing:
+Chainlink Price Feeds provide real-time USDC/USD price data to ensure accurate valuation for trading and transfers.
+
+# 💡 Key Features
+✅ On-chain representation of off-chain TSLA holdings
+🔒 Secured by Chainlink’s decentralized infrastructure
+⚡ Real-time price accuracy using Chainlink oracles
+🌎 Trade $TSLA with global blockchain accessibility
